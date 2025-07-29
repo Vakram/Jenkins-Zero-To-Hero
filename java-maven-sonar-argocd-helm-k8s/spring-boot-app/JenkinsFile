@@ -70,7 +70,9 @@ pipeline {
                         git commit -m "Update deployment image to version ${BUILD_NUMBER}"
                         git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
                     '''
-                } // This '}' closes the script block
-            } // <--- YOU ARE MISSING A '}' HERE TO CLOSE THE withCredentials block
-        } // This '}' closes the steps block
-    } // This '}' closes the stage block
+                } // Closes script block
+            } // Closes withCredentials block - THIS IS THE ONE YOU NEEDED
+        } // Closes steps block
+    } // Closes stage block
+  } // Closes stages block
+} // Closes pipeline block
