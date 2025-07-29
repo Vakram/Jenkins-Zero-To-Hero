@@ -10,6 +10,8 @@ pipeline {
       steps {
         sh 'echo passed'
         git branch: 'main', url: 'https://github.com/Vakram/Jenkins-Zero-To-Hero.git'
+        sh 'echo "Contents of workspace after checkout:"'
+        sh 'ls -a' // Add this to verify .git directory exists
       }
     }
     stage('Build and Test') {
