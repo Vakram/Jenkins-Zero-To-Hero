@@ -6,11 +6,10 @@ pipeline {
     }
   }
   stages {
-    sstage('Checkout') {
+    stage('Checkout') { // <--- CORRECTED from 'sstage'
       steps {
         sh 'echo passed'
-        // REPLACE 'git clone ...' with 'git pull --rebase'
-        sh 'git pull --rebase origin main' // Pulls latest changes from 'main'
+        sh 'git pull --rebase origin main' // Note: This command must be wrapped in 'sh'
         sh 'echo "Contents of workspace after checkout:"'
         sh 'ls -a'
       }
