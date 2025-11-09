@@ -6,11 +6,11 @@ pipeline {
     }
   }
   stages {
-    stage('Checkout') {
+    sstage('Checkout') {
       steps {
         sh 'echo passed'
-        // REPLACE 'checkout scm' or 'git branch: ...' with this raw sh command:
-        sh 'git clone https://github.com/Vakram/Jenkins-Zero-To-Hero.git .'
+        // REPLACE 'git clone ...' with 'git pull --rebase'
+        sh 'git pull --rebase origin main' // Pulls latest changes from 'main'
         sh 'echo "Contents of workspace after checkout:"'
         sh 'ls -a'
       }
