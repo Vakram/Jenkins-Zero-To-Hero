@@ -9,7 +9,8 @@ pipeline {
     stage('Checkout') {
       steps {
         sh 'echo passed'
-        checkout scm // <--- INSERT THIS LINE
+        // REPLACE 'checkout scm' or 'git branch: ...' with this raw sh command:
+        sh 'git clone https://github.com/Vakram/Jenkins-Zero-To-Hero.git .'
         sh 'echo "Contents of workspace after checkout:"'
         sh 'ls -a'
       }
@@ -56,11 +57,9 @@ pipeline {
             withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                 script {
                     // CHANGE dir('.') TO dir(env.WORKSPACE)
-                    dir(env.WORKSPACE) {
-                         // 1. ADD: Re-run a simple checkout to refresh Git context
-                         checkout scm
-                         
-                         // 2. Original Git commands follow
+                    dir(env.WORKSPACE) { 
+                        // These commands will now run inside the Docker shell, 
+                        // and the 'git clone' in the previous stage ensured the Git context is available.
                         sh '''
                             git config user.email "vasimvasim6303@gmail.com"
                             git config user.name "Vakram"
