@@ -6,10 +6,15 @@ pipeline {
     }
   }
   stages {
-    stage('Checkout') { // <--- CORRECTED from 'sstage'
+    stage('Checkout') {
       steps {
         sh 'echo passed'
-        sh 'git pull --rebase origin main' // Note: This command must be wrapped in 'sh'
+        
+        // --- ADD THIS NEW LINE ---
+        sh 'git config --global --add safe.directory /var/lib/jenkins/workspace/ultimate-cicd'
+        // --------------------------
+        
+        sh 'git pull --rebase origin main'
         sh 'echo "Contents of workspace after checkout:"'
         sh 'ls -a'
       }
