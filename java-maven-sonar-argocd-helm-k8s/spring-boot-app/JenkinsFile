@@ -2,11 +2,14 @@ pipeline {
     agent {
         docker {
             image 'rahul407/jenkins-maven-java17-agent:latest'
-            args '--user root -v /var/run/docker.sock:/var/run/docker.sock --network host' // mount Docker socket to access the host's Docker daemon
+            // The -u 979:977 arguments are applied by Jenkins automatically based on the host workspace
+            // Since you were using '--user root', we keep that explicit call but rely on 
+            // the Git client within the container to work properly.
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock --network host'
         }
     }
     
-    // FIX 1: Skip the automatic SCM checkout which was failing due to permissions
+    // Skip the automatic SCM checkout which consistently fails due to the permissions mismatch
     options {
         skipDefaultCheckout()
     }
@@ -16,29 +19,24 @@ pipeline {
             steps {
                 sh 'echo Starting custom checkout'
                 
-                // FIX 2: Ensure the workspace ownership is correct before ANY git command
-                // This resolves the "insufficient permission" error on .git/objects
-                sh 'chown -R $(id -u):$(id -g) .'
+                // IMPORTANT: Removed the problematic 'chown' command. We must rely on the 
+                // Docker user mapping to handle file ownership. If this fails again, 
+                // the primary solution is adjusting the UID/GID mapping on the host or in the Dockerfile.
                 
-                // Perform the Git clone/checkout manually
-                // Use the standard 'checkout scm' step or a manual 'git' command. 
-                // Using 'checkout scm' is often best as it uses Jenkins credentials if defined.
-                checkout scm
-                
-                // --- Your original commands follow ---
+                // Manual clone/pull: We now use a manual git command which sometimes handles permissions better
+                // than the 'checkout scm' step's Java client (JGit).
+                sh 'git clone https://github.com/Vakram/Jenkins-Zero-To-Hero .'
                 
                 sh 'git config --global --add safe.directory /var/lib/jenkins/workspace/ultimate-cicd'
-                
-                // Removed 'git pull --rebase origin main' because 'checkout scm' just performed the pull
                 
                 sh 'echo "Contents of workspace after checkout:"'
                 sh 'ls -a'
             }
         }
         stage('Build and Test') {
+            // ... (rest of the stages remain the same)
             steps {
                 sh 'ls -ltr'
-                // build the project and create a JAR file
                 sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
             }
         }
@@ -55,7 +53,6 @@ pipeline {
         stage('Build and Push Docker Image') {
             environment {
                 DOCKER_IMAGE = "rahul407/ultimate-cicd:${BUILD_NUMBER}"
-                // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
                 REGISTRY_CREDENTIALS = credentials('docker-cred')
             }
             steps {
@@ -82,7 +79,6 @@ pipeline {
                                 git config user.name "Vakram"
                                 BUILD_NUMBER=${BUILD_NUMBER}
                                 
-                                # This sed command correctly updates the image tag regardless of the previous tag number.
                                 sed -i "s|image: rahul407/ultimate-cicd:[0-9]*|image: rahul407/ultimate-cicd:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
                                 
                                 git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
