@@ -31,7 +31,7 @@ pipeline {
                 sh 'git checkout ${BRANCH_NAME}'
                 
                 // 3. Git Security Fix
-                sh 'git config --global --add safe.directory /var/lib/jenkins/workspace/ultimate-cicd'
+                sh 'git config --global --add safe.directory /var/lib/jenkins/workspace/cicd-demo'
                 
                 sh 'echo "Contents of workspace after checkout:"'
                 sh 'ls -a'
