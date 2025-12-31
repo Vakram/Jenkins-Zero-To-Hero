@@ -11,33 +11,32 @@ pipeline {
     options {
         skipDefaultCheckout() 
     }
-
-    stages {
+stages {
         stage('Checkout') {
             environment {
-                // Define the repository URL as an environment variable
                 REPO_URL = "https://github.com/Vakram/Jenkins-Zero-To-Hero"
-                BRANCH_NAME = "main" // Assuming you are checking out the main branch
+                BRANCH_NAME = "main"
             }
             steps {
                 sh 'echo Starting custom checkout using raw git commands'
                 
-                // 1. Clean the workspace (important for the manual clone)
+                // 1. CRITICAL FIX: Mark directory as safe BEFORE any git commands
+                sh 'git config --global --add safe.directory "*"'
+                
+                // 2. Clean the workspace
                 sh 'rm -rf *'
                 sh 'rm -rf .git'
                 
-                // 2. MANUAL CLONE (This works around the JGit/AccessDenied issue)
-                sh 'git clone ${REPO_URL} .'
-                sh 'git checkout ${BRANCH_NAME}'
-                
-                // 3. Git Security Fix
-                sh 'git config --global --add safe.directory /var/lib/jenkins/workspace/cicd-demo'
+                // 3. MANUAL CLONE 
+                // Using double quotes so Jenkins environment variables are injected correctly
+                sh "git clone ${REPO_URL} ."
+                sh "git checkout ${BRANCH_NAME}"
                 
                 sh 'echo "Contents of workspace after checkout:"'
                 sh 'ls -a'
             }
         }
-        // ... (rest of the stages remain the same)
+
         stage('Build and Test') {
             steps {
                 sh 'ls -ltr'
