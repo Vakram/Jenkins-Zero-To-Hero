@@ -2,8 +2,8 @@ pipeline {
     agent {
         docker {
             image 'rahul407/jenkins-maven-java17-agent:latest'
-            // We MUST keep --user root here to give the shell commands maximum chance of success
-            args '--user root -v /var/run/docker.sock:/var/run/docker.sock --network host' 
+            // Added -u 0:0 to ensure we operate as root to fix workspace permissions
+            args '--user root -u 0:0 -v /var/run/docker.sock:/var/run/docker.sock --network host' 
         }
     }
     
@@ -18,22 +18,27 @@ pipeline {
                 BRANCH_NAME = "main"
             }
             steps {
-                sh 'echo Starting custom checkout using raw git commands'
+                sh 'echo Starting custom checkout'
                 sh 'git config --global --add safe.directory "*"'
-                sh 'rm -rf *'
-                sh 'rm -rf .git'
+                
+                // Clean workspace
+                sh 'rm -rf * .git'
+                
                 sh "git clone ${REPO_URL} ."
                 sh "git checkout ${BRANCH_NAME}"
-                sh 'ls -a'
+                
+                // CRITICAL FIX: Give permissions back to the jenkins user for the @tmp directories
+                sh "chown -R 105:108 ${WORKSPACE}"
             }
         }
 
         stage('Build and Test') {
             steps {
-                // Using 'dir' block is cleaner than 'cd && command'
-                dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
-                    sh 'mvn clean package'
-                }
+                // Using cd inside sh to avoid the dir() block AccessDeniedException
+                sh '''
+                    cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                    mvn clean package
+                '''
             }
         }
 
@@ -43,14 +48,12 @@ pipeline {
             }
             steps {
                 withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-                    dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
-                        // FIX: Using the fully qualified plugin name to avoid the 'prefix sonar' error
-                        sh """
-                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
-                            -Dsonar.login=${SONAR_AUTH_TOKEN} \
-                            -Dsonar.host.url=${SONAR_URL}
-                        """
-                    }
+                    sh """
+                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
+                        -Dsonar.login=${SONAR_AUTH_TOKEN} \
+                        -Dsonar.host.url=${SONAR_URL}
+                    """
                 }
             }
         }
@@ -61,9 +64,10 @@ pipeline {
             }
             steps {
                 script {
-                    dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
-                        sh "docker build -t ${DOCKER_IMAGE} ."
-                    }
+                    sh """
+                        cd java-maven-sonar-argocd-helm-k8s/spring-boot-app
+                        docker build -t ${DOCKER_IMAGE} .
+                    """
                     docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
                         docker.image("${DOCKER_IMAGE}").push()
                     }
@@ -78,18 +82,16 @@ pipeline {
             }
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-                    script {
-                        sh '''
-                            git config user.email "vasimvasim6303@gmail.com"
-                            git config user.name "Vakram"
-                            
-                            sed -i "s|image: rahul407/ultimate-cicd:[0-9]*|image: rahul407/ultimate-cicd:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                            
-                            git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                            git commit -m "Update deployment image to version ${BUILD_NUMBER}"
-                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
-                        '''
-                    } 
+                    sh '''
+                        git config user.email "vasimvasim6303@gmail.com"
+                        git config user.name "Vakram"
+                        
+                        sed -i "s|image: rahul407/ultimate-cicd:[0-9]*|image: rahul407/ultimate-cicd:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        
+                        git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                    '''
                 } 
             } 
         } 
