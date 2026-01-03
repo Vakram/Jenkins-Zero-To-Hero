@@ -7,11 +7,11 @@ pipeline {
         }
     }
     
-    // KEEP: This ensures Jenkins doesn't fail before our custom stage starts.
     options {
         skipDefaultCheckout() 
     }
-stages {
+
+    stages {
         stage('Checkout') {
             environment {
                 REPO_URL = "https://github.com/Vakram/Jenkins-Zero-To-Hero"
@@ -19,55 +19,58 @@ stages {
             }
             steps {
                 sh 'echo Starting custom checkout using raw git commands'
-                
-                // 1. CRITICAL FIX: Mark directory as safe BEFORE any git commands
                 sh 'git config --global --add safe.directory "*"'
-                
-                // 2. Clean the workspace
                 sh 'rm -rf *'
                 sh 'rm -rf .git'
-                
-                // 3. MANUAL CLONE 
-                // Using double quotes so Jenkins environment variables are injected correctly
                 sh "git clone ${REPO_URL} ."
                 sh "git checkout ${BRANCH_NAME}"
-                
-                sh 'echo "Contents of workspace after checkout:"'
                 sh 'ls -a'
             }
         }
 
         stage('Build and Test') {
             steps {
-                sh 'ls -ltr'
-                sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
+                // Using 'dir' block is cleaner than 'cd && command'
+                dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+                    sh 'mvn clean package'
+                }
             }
         }
+
         stage('Static Code Analysis') {
             environment {
                 SONAR_URL = "http://172.17.217.202:9000"
             }
             steps {
                 withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-                    sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_AUTH_TOKEN -Dsonar.host.url=${SONAR_URL}'
-                }
-            }
-        }
-        stage('Build and Push Docker Image') {
-            environment {
-                DOCKER_IMAGE = "rahul407/ultimate-cicd:${BUILD_NUMBER}"
-                REGISTRY_CREDENTIALS = credentials('docker-cred')
-            }
-            steps {
-                script {
-                    sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-                    def dockerImage = docker.image("${DOCKER_IMAGE}")
-                    docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
-                        dockerImage.push()
+                    dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+                        // FIX: Using the fully qualified plugin name to avoid the 'prefix sonar' error
+                        sh """
+                            mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.1.2184:sonar \
+                            -Dsonar.login=${SONAR_AUTH_TOKEN} \
+                            -Dsonar.host.url=${SONAR_URL}
+                        """
                     }
                 }
             }
         }
+
+        stage('Build and Push Docker Image') {
+            environment {
+                DOCKER_IMAGE = "rahul407/ultimate-cicd:${BUILD_NUMBER}"
+            }
+            steps {
+                script {
+                    dir('java-maven-sonar-argocd-helm-k8s/spring-boot-app') {
+                        sh "docker build -t ${DOCKER_IMAGE} ."
+                    }
+                    docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
+                        docker.image("${DOCKER_IMAGE}").push()
+                    }
+                }
+            }
+        }
+
         stage('Update Deployment File') {
             environment {
                 GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
@@ -76,21 +79,16 @@ stages {
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                     script {
-                        dir(env.WORKSPACE) { 
-                            sh '''
-                                git config user.email "vasimvasim6303@gmail.com"
-                                git config user.name "Vakram"
-                                BUILD_NUMBER=${BUILD_NUMBER}
-                                
-                                sed -i "s|image: rahul407/ultimate-cicd:[0-9]*|image: rahul407/ultimate-cicd:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                                
-                                git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                                
-                                git commit -m "Update deployment image to version ${BUILD_NUMBER}"
-                                
-                                git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
-                            '''
-                        } 
+                        sh '''
+                            git config user.email "vasimvasim6303@gmail.com"
+                            git config user.name "Vakram"
+                            
+                            sed -i "s|image: rahul407/ultimate-cicd:[0-9]*|image: rahul407/ultimate-cicd:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                            
+                            git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                            git commit -m "Update deployment image to version ${BUILD_NUMBER}"
+                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                        '''
                     } 
                 } 
             } 
